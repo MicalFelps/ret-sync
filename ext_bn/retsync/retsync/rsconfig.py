@@ -44,7 +44,8 @@ except ImportError:
 HOST = 'localhost'
 PORT = 9100
 
-CB_TRACE_COLOR = HighlightColor(HighlightStandardColor.GreenHighlightColor, alpha=192)
+CB_TRACE_COLOR = HighlightColor(
+    HighlightStandardColor.GreenHighlightColor, alpha=192)
 
 # encoding settings (for data going in/out the plugin)
 RS_ENCODING = 'utf-8'

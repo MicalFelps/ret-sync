@@ -23,23 +23,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
+import os
+
+# fmt: off
 import binaryninjaui
 if 'qt_major_version' in binaryninjaui.__dict__ and binaryninjaui.qt_major_version == 6:
-    from PySide6 import QtCore
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QLabel, QWidget
-    from PySide6.QtGui import QKeySequence
+    from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel
+    from PySide6.QtGui import QImage
 else:
-    from PySide2 import QtCore
     from PySide2.QtCore import Qt
-    from PySide2.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QLabel, QWidget
-    from PySide2.QtGui import QKeySequence
+    from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel
+    from PySide2.QtGui import QImage
 
-from binaryninjaui import UIAction, UIActionHandler
-from binaryninjaui import DockContextHandler
+from binaryninjaui import (SidebarWidget, SidebarWidgetType, UIActionHandler,
+                           SidebarWidgetLocation, SidebarContextSensitivity)
 
+from typing import TYPE_CHECKING
 
-from .rsconfig import rs_log
+if TYPE_CHECKING:
+    from ..sync import SyncPlugin
+# fmt: on
 
 
 class SyncStatus(object):
@@ -48,12 +53,11 @@ class SyncStatus(object):
     RUNNING = "connected"
 
 
-# based on hellodockwidget.py
-# from https://github.com/Vector35/binaryninja-api/
-class SyncDockWidget(QWidget, DockContextHandler):
-    def __init__(self, parent, name, data):
-        QWidget.__init__(self, parent)
-        DockContextHandler.__init__(self, self, name)
+class SyncWidget(SidebarWidget):
+    # based on hellosidebar.py
+    # from https://github.com/Vector35/binaryninja-api/
+    def __init__(self, name, frame, data):
+        SidebarWidget.__init__(self, name)
         self.actionHandler = UIActionHandler()
         self.actionHandler.setupActionHandler(self)
 
@@ -61,19 +65,19 @@ class SyncDockWidget(QWidget, DockContextHandler):
         status_layout.addWidget(QLabel('Status: '))
         self.status = QLabel('idle')
         status_layout.addWidget(self.status)
-        status_layout.setAlignment(QtCore.Qt.AlignCenter)
+        status_layout.setAlignment(Qt.AlignCenter)
 
         client_dbg_layout = QHBoxLayout()
         client_dbg_layout.addWidget(QLabel('Client debugger: '))
         self.client_dbg = QLabel('n/a')
         client_dbg_layout.addWidget(self.client_dbg)
-        client_dbg_layout.setAlignment(QtCore.Qt.AlignCenter)
+        client_dbg_layout.setAlignment(Qt.AlignCenter)
 
         client_pgm_layout = QHBoxLayout()
         client_pgm_layout.addWidget(QLabel('Client program: '))
         self.client_pgm = QLabel('n/a')
         client_pgm_layout.addWidget(self.client_pgm)
-        client_pgm_layout.setAlignment(QtCore.Qt.AlignCenter)
+        client_pgm_layout.setAlignment(Qt.AlignCenter)
 
         layout = QVBoxLayout()
         layout.addStretch()
@@ -83,11 +87,8 @@ class SyncDockWidget(QWidget, DockContextHandler):
         layout.addStretch()
         self.setLayout(layout)
 
-    def shouldBeVisible(self, view_frame):
-        if view_frame is None:
-            return False
-        else:
-            return True
+    def notifyViewChanged(self, view_frame):
+        pass
 
     def contextMenuEvent(self, event):
         self.m_contextMenuManager.show(self.m_menu, self.actionHandler)
@@ -119,6 +120,32 @@ class SyncDockWidget(QWidget, DockContextHandler):
         self.client_pgm.setText('n/a')
         self.client_dbg.setText('n/a')
 
-    @staticmethod
-    def create_widget(name, parent, data=None):
-        return SyncDockWidget(parent, name, data)
+
+class SyncWidgetType(SidebarWidgetType):
+    def __init__(self, sync_plugin: "SyncPlugin"):
+        self.sync_plugin = sync_plugin
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        png_path = os.path.join(base_dir, "retsync.png")
+
+        icon = QImage(png_path)
+        super().__init__(icon, "ret-sync")
+
+    def createWidget(self, frame, data):
+        # This callback is called when a widget needs to be created for a given context. Different
+        # widgets are created for each unique BinaryView. They are created on demand when the sidebar
+        # widget is visible and the BinaryView becomes active.
+        sync_widget = SyncWidget("ret-sync", frame, data)
+        self.sync_plugin.widget = sync_widget
+        return sync_widget
+
+    def defaultLocation(self):
+        # Default location in the sidebar where this widget will appear
+        return SidebarWidgetLocation.RightContent
+
+    def contextSensitivity(self):
+        # Context sensitivity controls which contexts have separate instances of the sidebar widget.
+        # Using `contextSensitivity` instead of the deprecated `viewSensitive` callback allows sidebar
+        # widget implementations to reduce resource usage.
+
+        # This example widget uses a single instance and detects view changes.
+        return SidebarContextSensitivity.SelfManagedSidebarContext
